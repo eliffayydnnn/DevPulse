@@ -1,122 +1,138 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+import { useState, useEffect } from 'react';
+import { Navbar } from './components/Navbar';
+import { SearchBar } from './components/SearchBar';
+import { MetricCards } from './components/MetricCards';
+import { ActivityCharts } from './components/ActivityCharts';
+import { CommitAndPRViews } from './components/CommitAndPRViews';
+import { ComparisonView } from './components/ComparisonView';
+import { UserExplorerView } from './components/UserExplorerView';
+import { ArchitectureView } from './components/ArchitectureView';
+import { analyzeRepository, getRateLimit } from './services/api';
+import type { RepositoryAnalysisDto, RateLimitInfoDto } from './types/api';
+import { AlertCircle, RefreshCw } from 'lucide-react';
 
-function App() {
-  const [count, setCount] = useState(0)
+export function App() {
+  const [activeTab, setActiveTab] = useState<'analytics' | 'comparison' | 'user' | 'architecture'>('analytics');
+  const [query, setQuery] = useState('dotnet/aspnetcore');
+  const [analysis, setAnalysis] = useState<RepositoryAnalysisDto | null>(null);
+  const [rateLimit, setRateLimit] = useState<RateLimitInfoDto | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchAnalysis = async (targetQuery: string) => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      // Clean query if full URL or owner/repo
+      const cleaned = targetQuery.replace(/^https?:\/\/github\.com\//i, '').replace(/\.git$/i, '').trim().replace(/\/$/, '');
+      const parts = cleaned.split('/');
+      if (parts.length < 2 || !parts[0] || !parts[1]) {
+        throw new Error(`Invalid format '${targetQuery}'. Please provide in 'owner/repo' format.`);
+      }
+
+      const [owner, repo] = parts;
+      const data = await analyzeRepository(owner, repo);
+      setAnalysis(data);
+      setQuery(`${owner}/${repo}`);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to retrieve repository data.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    // Initial fetch
+    fetchAnalysis('dotnet/aspnetcore');
+    getRateLimit().then(setRateLimit);
+  }, []);
+
+  const handleSelectRepoFromUser = (repoQuery: string) => {
+    setActiveTab('analytics');
+    fetchAnalysis(repoQuery);
+  };
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
+    <div className="app-container">
+      <Navbar activeTab={activeTab} onTabChange={setActiveTab} rateLimit={rateLimit} />
+
+      {activeTab === 'analytics' && (
+        <>
+          <SearchBar onSearch={fetchAnalysis} isLoading={isLoading} initialQuery={query} />
+
+          {error && (
+            <div className="error-banner">
+              <AlertCircle size={20} color="#f43f5e" />
+              <div style={{ flex: 1 }}>
+                <strong>Analysis Failed:</strong> {error}
+              </div>
+              <button
+                type="button"
+                className="nav-tab-btn"
+                style={{ padding: '0.25rem 0.75rem', background: 'rgba(255,255,255,0.1)' }}
+                onClick={() => fetchAnalysis(query)}
+              >
+                <RefreshCw size={14} />
+                <span>Retry</span>
+              </button>
+            </div>
+          )}
+
+          {isLoading && !analysis && (
+            <div className="state-container">
+              <div className="spinner" />
+              <p style={{ color: '#94a3b8', fontSize: '1rem' }}>Extracting commit graphs and repository telemetry...</p>
+            </div>
+          )}
+
+          {analysis && (
+            <div style={{ opacity: isLoading ? 0.6 : 1, transition: 'opacity 0.2s ease' }}>
+              <MetricCards analysis={analysis} />
+              <ActivityCharts activityTrend={analysis.activityTrend} languages={analysis.languages} />
+              <CommitAndPRViews
+                commits={analysis.recentCommits}
+                pullRequests={analysis.pullRequests}
+                issues={analysis.issues}
+              />
+            </div>
+          )}
+        </>
+      )}
+
+      {activeTab === 'comparison' && <ComparisonView />}
+
+      {activeTab === 'user' && <UserExplorerView onSelectRepoForAnalysis={handleSelectRepoFromUser} />}
+
+      {activeTab === 'architecture' && <ArchitectureView />}
+
+      {/* Footer */}
+      <footer
+        style={{
+          marginTop: '4rem',
+          paddingTop: '2rem',
+          borderTop: '1px solid var(--border-subtle)',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '1rem',
+          color: '#64748b',
+          fontSize: '0.85rem',
+        }}
+      >
         <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
+          <span>DevPulse &bull; Full-Stack GitHub Analytics Platform</span>
         </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
-
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
+        <div style={{ display: 'flex', gap: '1.5rem' }}>
+          <span>ASP.NET Core 9.0 Web API</span>
+          <span>&bull;</span>
+          <span>React 19 &bull; Vite &bull; TypeScript</span>
+          <span>&bull;</span>
+          <span>Clean Architecture</span>
         </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+      </footer>
+    </div>
+  );
 }
 
-export default App
+export default App;
