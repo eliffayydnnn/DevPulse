@@ -7,17 +7,22 @@ import { CommitAndPRViews } from './components/CommitAndPRViews';
 import { ComparisonView } from './components/ComparisonView';
 import { UserExplorerView } from './components/UserExplorerView';
 import { ArchitectureView } from './components/ArchitectureView';
+import { BookmarksView } from './components/BookmarksView';
+import { AuthModal } from './components/AuthModal';
 import { analyzeRepository, getRateLimit } from './services/api';
-import type { RepositoryAnalysisDto, RateLimitInfoDto } from './types/api';
+import { getStoredUser, clearSession, fetchCurrentUser } from './services/auth';
+import type { RepositoryAnalysisDto, RateLimitInfoDto, UserDto } from './types/api';
 import { AlertCircle, RefreshCw } from 'lucide-react';
 
 export function App() {
-  const [activeTab, setActiveTab] = useState<'analytics' | 'comparison' | 'user' | 'architecture'>('analytics');
+  const [activeTab, setActiveTab] = useState<'analytics' | 'comparison' | 'user' | 'architecture' | 'bookmarks'>('analytics');
   const [query, setQuery] = useState('dotnet/aspnetcore');
   const [analysis, setAnalysis] = useState<RepositoryAnalysisDto | null>(null);
   const [rateLimit, setRateLimit] = useState<RateLimitInfoDto | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [user, setUser] = useState<UserDto | null>(() => getStoredUser());
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
 
   const fetchAnalysis = async (targetQuery: string) => {
     setIsLoading(true);
@@ -45,6 +50,9 @@ export function App() {
     // Initial fetch
     fetchAnalysis('dotnet/aspnetcore');
     getRateLimit().then(setRateLimit);
+    fetchCurrentUser().then(u => {
+      if (u) setUser(u);
+    });
   }, []);
 
   const handleSelectRepoFromUser = (repoQuery: string) => {
@@ -52,9 +60,21 @@ export function App() {
     fetchAnalysis(repoQuery);
   };
 
+  const handleSignOut = () => {
+    clearSession();
+    setUser(null);
+  };
+
   return (
     <div className="app-container">
-      <Navbar activeTab={activeTab} onTabChange={setActiveTab} rateLimit={rateLimit} />
+      <Navbar
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        rateLimit={rateLimit}
+        user={user}
+        onOpenAuthModal={() => setIsAuthModalOpen(true)}
+        onSignOut={handleSignOut}
+      />
 
       {activeTab === 'analytics' && (
         <>
@@ -87,7 +107,10 @@ export function App() {
 
           {analysis && (
             <div style={{ opacity: isLoading ? 0.6 : 1, transition: 'opacity 0.2s ease' }}>
-              <MetricCards analysis={analysis} />
+              <MetricCards
+                analysis={analysis}
+                onRequireAuth={() => setIsAuthModalOpen(true)}
+              />
               <ActivityCharts activityTrend={analysis.activityTrend} languages={analysis.languages} />
               <CommitAndPRViews
                 commits={analysis.recentCommits}
@@ -103,7 +126,22 @@ export function App() {
 
       {activeTab === 'user' && <UserExplorerView onSelectRepoForAnalysis={handleSelectRepoFromUser} />}
 
+      {activeTab === 'bookmarks' && (
+        <BookmarksView
+          onSelectRepoForAnalysis={handleSelectRepoFromUser}
+          onOpenAuthModal={() => setIsAuthModalOpen(true)}
+        />
+      )}
+
       {activeTab === 'architecture' && <ArchitectureView />}
+
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        onAuthSuccess={(authedUser) => {
+          setUser(authedUser);
+        }}
+      />
 
       {/* Footer */}
       <footer

@@ -9,9 +9,18 @@ import type {
 
 const API_BASE = typeof window !== 'undefined' ? '/api' : 'http://localhost:5000/api';
 
+function getAuthHeader(): Record<string, string> {
+  if (typeof window === 'undefined') return {};
+  const token = localStorage.getItem('devpulse_auth_token');
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 export async function checkApiHealth(): Promise<boolean> {
   try {
-    const res = await fetch(`${API_BASE}/health`, { signal: AbortSignal.timeout(2000) });
+    const res = await fetch(`${API_BASE}/health`, { 
+      headers: getAuthHeader(),
+      signal: AbortSignal.timeout(2000) 
+    });
     return res.ok;
   } catch {
     return false;

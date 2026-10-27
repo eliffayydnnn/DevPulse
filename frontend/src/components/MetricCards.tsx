@@ -1,13 +1,42 @@
-import React from 'react';
-import { Star, GitFork, AlertCircle, ShieldCheck, Clock, ExternalLink, GitPullRequest } from 'lucide-react';
+import React, { useState } from 'react';
+import { Star, GitFork, AlertCircle, ShieldCheck, Clock, ExternalLink, GitPullRequest, Bookmark } from 'lucide-react';
 import type { RepositoryAnalysisDto } from '../types/api';
+import { saveRepository, getStoredToken } from '../services/auth';
 
 interface MetricCardsProps {
   analysis: RepositoryAnalysisDto;
+  onRequireAuth?: () => void;
 }
 
-export const MetricCards: React.FC<MetricCardsProps> = ({ analysis }) => {
+export const MetricCards: React.FC<MetricCardsProps> = ({ analysis, onRequireAuth }) => {
   const { repository: repo, metrics } = analysis;
+  const [isSaved, setIsSaved] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
+  const handleBookmark = async () => {
+    if (!getStoredToken()) {
+      if (onRequireAuth) {
+        onRequireAuth();
+      } else {
+        alert('Please sign in to bookmark repositories.');
+      }
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      await saveRepository({
+        owner: repo.owner,
+        repositoryName: repo.name,
+        notes: `Saved via DevPulse Analytics (${metrics.healthGrade} Health Grade)`,
+      });
+      setIsSaved(true);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Failed to save repository.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   const gradeClass = `grade-${metrics.healthGrade.replace('+', '-plus')}`;
 
@@ -53,16 +82,35 @@ export const MetricCards: React.FC<MetricCardsProps> = ({ analysis }) => {
             </div>
           </div>
 
-          <a
-            href={repo.htmlUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="search-submit-btn"
-            style={{ textDecoration: 'none', padding: '0.6rem 1.25rem', fontSize: '0.875rem' }}
-          >
-            <span>View on GitHub</span>
-            <ExternalLink size={16} />
-          </a>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={handleBookmark}
+              disabled={isSaving}
+              className="nav-tab-btn"
+              style={{
+                padding: '0.6rem 1rem',
+                fontSize: '0.875rem',
+                background: isSaved ? 'rgba(56, 189, 248, 0.2)' : 'rgba(255, 255, 255, 0.08)',
+                color: isSaved ? '#38bdf8' : 'var(--text-primary)',
+                border: isSaved ? '1px solid rgba(56, 189, 248, 0.4)' : '1px solid var(--border-subtle)',
+              }}
+            >
+              <Bookmark size={16} fill={isSaved ? '#38bdf8' : 'none'} />
+              <span>{isSaving ? 'Saving...' : isSaved ? 'Bookmarked' : 'Bookmark'}</span>
+            </button>
+
+            <a
+              href={repo.htmlUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="search-submit-btn"
+              style={{ textDecoration: 'none', padding: '0.6rem 1.25rem', fontSize: '0.875rem' }}
+            >
+              <span>View on GitHub</span>
+              <ExternalLink size={16} />
+            </a>
+          </div>
         </div>
       </div>
 

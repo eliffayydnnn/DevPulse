@@ -1,4 +1,5 @@
 using DevPulse.Application.Contracts;
+using DevPulse.Infrastructure.Auth;
 using DevPulse.Infrastructure.GitHub;
 using DevPulse.Infrastructure.Persistence;
 using DevPulse.Infrastructure.Services;
@@ -29,9 +30,9 @@ public static class DependencyInjection
             });
         });
 
-        // Memory Caching
+        // Memory & Distributed Redis Caching with resilient fallback
         services.AddMemoryCache();
-        services.AddSingleton<ICacheService, MemoryCacheService>();
+        services.AddSingleton<ICacheService, RedisCacheService>();
 
         // GitHub API Typed HttpClient
         services.AddHttpClient<IGitHubService, GitHubClient>(client =>
@@ -39,6 +40,11 @@ public static class DependencyInjection
             client.BaseAddress = new Uri("https://api.github.com/");
             client.Timeout = TimeSpan.FromSeconds(25);
         });
+
+        // Security & Authentication Services
+        services.AddSingleton<IPasswordHasherService, PasswordHasherService>();
+        services.AddSingleton<IJwtTokenGenerator, JwtTokenGenerator>();
+        services.AddScoped<IAuthService, AuthService>();
 
         // Analytics & Business Services
         services.AddScoped<IAnalyticsService, AnalyticsService>();
